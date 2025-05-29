@@ -12,7 +12,7 @@ class CoachSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Coach
-        fields = ['id', 'user', 'user_details', 'bio', 'specialization', 
+        fields = ['id','user_details', 'bio', 'specialization', 
                   'hourly_rate', 'is_active', 'created_at', 'updated_at', 
                   'available_days']
         read_only_fields = ['created_at', 'updated_at']
@@ -63,7 +63,7 @@ class ReservationSerializer(serializers.ModelSerializer):
         model = Reservation
         fields = ['id', 'user', 'user_details', 'coach', 'coach_details', 
                   'date', 'time_slot', 'time_slot_display', 'day_of_week',
-                  'status', 'cancellation_reason', 'created_at', 'updated_at']
+                  'status', 'cancellation_reason', 'created_at', 'updated_at','canceled_by_coach']  
         read_only_fields = ['created_at', 'updated_at', 'day_of_week','user']
     
     def get_day_of_week(self, obj):
@@ -79,15 +79,16 @@ class ReservationSerializer(serializers.ModelSerializer):
         if data.get('date') and data.get('coach'):
             day_of_week = datetime.strptime(str(data['date']), '%Y-%m-%d').strftime('%A')
             if day_of_week not in data['coach'].get_available_days():
-                raise serializers.ValidationError(f"Coach is not available on {day_of_week}")
+                raise serializers.ValidationError(f"Coach is not available on {day_of_week}")        
+
         
         # Check if the time slot is already booked
-        if data.get('date') and data.get('coach') and data.get('time_slot') and data.get('status')!='canceled':
+        if data.get('date') and data.get('coach') and data.get('time_slot') and data.get('status')=='pending':
             if Reservation.objects.filter(
                 coach=data['coach'],
                 date=data['date'],
                 time_slot=data['time_slot'],
-                status__in=['pending', 'confirmed']
+                canceled_by_coach=True
             ).exists():
                 raise serializers.ValidationError("This time slot is already booked")
         

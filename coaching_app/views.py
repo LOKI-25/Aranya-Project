@@ -6,6 +6,9 @@ from django.db.models import Q
 from datetime import datetime
 from .models import Coach, Reservation
 from .serializers import CoachSerializer, ReservationSerializer, CancelReservationSerializer
+from rest_framework.decorators import api_view, permission_classes
+
+
 
 class CoachViewSet(viewsets.ModelViewSet):
     serializer_class = CoachSerializer
@@ -71,6 +74,7 @@ class CoachViewSet(viewsets.ModelViewSet):
         # Filter available slots
         available_slots = {k: v for k, v in all_slots.items() if k not in booked_slots}
         
+        
         return Response({
             "date": date_str,
             "day_of_week": day_of_week,
@@ -87,8 +91,8 @@ class ReservationViewSet(viewsets.ModelViewSet):
         # Check if the user is a coach
         try:
             coach = user.coach_profile
-            # If viewing as coach, show all reservations for this coach
             # import pdb; pdb.set_trace()
+            # If viewing as coach, show all reservations for this coach
             if self.request.query_params.get('as_coach', False):
                 return Reservation.objects.filter(coach=coach)
         except Coach.DoesNotExist:
@@ -100,6 +104,8 @@ class ReservationViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
     
+    
+
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         reservation = self.get_object()
@@ -136,3 +142,69 @@ class ReservationViewSet(viewsets.ModelViewSet):
             )
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_available_slots(request):
+    coach_id = request.query_params.get('coach_id')
+    date = request.query_params.get('date')
+
+    if not coach_id or not date:
+        return Response(
+            {"detail": "Coach ID and date are required."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    try:
+        coach = Coach.objects.get(id=coach_id)
+    except Coach.DoesNotExist:
+        return Response(
+            {"detail": "Coach not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    try:
+        date = datetime.strptime(date, '%Y-%m-%d').date()
+    except ValueError:
+        return Response(
+            {"detail": "Invalid date format. Use YYYY-MM-DD."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Check if coach is available on this day of the week
+    day_of_week = date.strftime('%A')
+    if day_of_week not in coach.get_available_days():
+        return Response(
+            {"detail": f"Coach is not available on {day_of_week}."},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    available_slots = {}
+    user_booked_slots = Reservation.objects.filter(
+        user=request.user,
+        date=date,
+        status__in=['pending', 'confirmed']
+    )
+    if user_booked_slots:
+        return Response({
+            "date": date,
+        "day_of_week": day_of_week,
+        "available_slots": {}
+        },status=status.HTTP_200_OK
+    )
+    coach_booked_slots = Reservation.objects.filter(
+        coach=coach,
+        date=date,
+    ).exclude(canceled_by_coach=False).values_list('time_slot', flat=True)
+          
+    all_slots = dict(Reservation.TIME_SLOT_CHOICES)
+    available_slots = {k: v for k, v in all_slots.items() if k not in coach_booked_slots}
+
+    # import pdb; pdb.set_trace()
+    return Response({
+        "date": date,
+        "day_of_week": day_of_week,
+        "available_slots": available_slots
+    })  
+
+    

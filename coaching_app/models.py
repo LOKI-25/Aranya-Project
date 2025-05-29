@@ -61,6 +61,7 @@ class Reservation(models.Model):
     cancellation_reason = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    canceled_by_coach = models.BooleanField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.user.username} - {self.coach.user.username} - {self.date} {self.get_time_slot_display()}"
